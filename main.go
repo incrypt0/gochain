@@ -4,9 +4,9 @@ import (
 	"log"
 	"os"
 
+	"github.com/incrypt0/gochain/blockchain"
 	"github.com/incrypt0/gochain/handler"
 	"github.com/joho/godotenv"
-	"github.com/labstack/echo/v4"
 )
 
 func main() {
@@ -15,13 +15,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	e := echo.New()
-
-	h := handler.New()
-	go h.GenesisBlock()
-	h.Register(e)
-
 	log.Println(os.Getenv("PORT"))
 
-	e.Logger.Fatal(e.Start(":" + os.Getenv("PORT")))
+	chain := blockchain.New()
+
+	handler.New(chain)
 }

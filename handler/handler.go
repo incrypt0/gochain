@@ -1,64 +1,108 @@
 package handler
 
 import (
+	"bufio"
+	"encoding/json"
+	"io"
 	"log"
-	"net/http"
+	"net"
+	"os"
+	"sync"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/incrypt0/gochain/blockchain"
-	"github.com/incrypt0/gochain/models"
-	"github.com/labstack/echo/v4"
 )
 
 type Handler struct {
-	name   string
-	bchain blockchain.BlockChain
+	chain    *blockchain.BlockChain
+	bcServer chan []*blockchain.Block
+	mutex    *sync.Mutex
 }
 
-func New() *Handler {
-	return &Handler{name: "gochain"}
-}
+func (h *Handler) handleConn(conn net.Conn) {
+	defer conn.Close()
 
-func (h *Handler) Register(e *echo.Echo) {
-	log.Println("Hi from handler !!")
-	e.GET("/", h.getBlockChain)
-	e.POST("/", h.createBlock)
-}
+	_, _ = io.WriteString(conn, "Enter a new message:")
 
-func (h *Handler) createBlock(c echo.Context) error {
-	var m models.Message
+	go h.scanBlockCreation(conn)
 
-	if err := c.Bind(&m); err != nil {
-		log.Println(err)
+	go func() {
+		for {
+			time.Sleep(30 * time.Second)
+			h.mutex.Lock()
+			output, err := json.Marshal(h.chain)
 
-		return c.JSON(http.StatusInternalServerError, echo.Map{"success": false})
+			if err != nil {
+				log.Panic(err)
+			}
+
+			h.mutex.Unlock()
+
+			_, _ = io.WriteString(conn, string(output))
+		}
+	}()
+
+	for range h.bcServer {
+		spew.Dump(h.chain)
 	}
 
-	newBlock, err := blockchain.GenerateBlock(h.bchain.Blocks[len(h.bchain.Blocks)-1], m.BPM)
+	log.Println("4")
+}
+
+func (h *Handler) scanBlockCreation(conn io.ReadWriter) {
+	blocks := h.chain.Blocks
+	scanner := bufio.NewScanner(conn)
+
+	for scanner.Scan() {
+		data := scanner.Text()
+		newBlock, err := blockchain.GenerateBlock(blocks[len(blocks)-1], data)
+
+		if err != nil {
+			log.Println(err)
+
+			continue
+		}
+
+		if newBlock.IsBlockValid(blocks[len(blocks)-1]) {
+			newBlockChain := append(h.chain.Blocks, newBlock)
+
+			h.chain.ReplaceChain(newBlockChain)
+		}
+
+		h.bcServer <- h.chain.Blocks
+
+		_, err = io.WriteString(conn, "\nEnter a new message:")
+
+		if err != nil {
+			log.Println(err)
+
+			continue
+		}
+	}
+}
+
+func New(chain *blockchain.BlockChain) {
+	server, err := net.Listen("tcp", ":"+os.Getenv("PORT"))
+	bcServer := make(chan []*blockchain.Block)
+
+	var mutex = &sync.Mutex{}
+
+	h := Handler{chain: chain, bcServer: bcServer, mutex: mutex}
 
 	if err != nil {
-		log.Println(err)
-
-		return c.JSON(http.StatusInternalServerError, echo.Map{"success": false})
+		log.Panic(err)
 	}
 
-	if newBlock.IsBlockValid(h.bchain.Blocks[len(h.bchain.Blocks)-1]) {
-		h.bchain.Blocks = append(h.bchain.Blocks, newBlock)
+	defer server.Close()
+
+	for {
+		conn, err := server.Accept()
+
+		if err != nil {
+			log.Panic(err)
+		}
+
+		go h.handleConn(conn)
 	}
-
-	return c.JSON(http.StatusOK, newBlock)
-}
-
-func (h *Handler) getBlockChain(c echo.Context) error {
-	return c.JSON(http.StatusOK, h.bchain.Blocks)
-}
-
-func (h *Handler) GenesisBlock() {
-	t := time.Now()
-
-	genesisBlock := blockchain.Block{0, t.String(), 0, "", ""}
-
-	spew.Dump(genesisBlock)
-	h.bchain.Blocks = append(h.bchain.Blocks, genesisBlock)
 }

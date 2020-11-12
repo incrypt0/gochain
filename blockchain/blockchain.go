@@ -5,22 +5,24 @@ import (
 	"encoding/hex"
 	"log"
 	"time"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 type BlockChain struct {
-	Blocks []Block
+	Blocks []*Block
 }
 
 type Block struct {
 	Index     int
 	Timestamp string
-	BPM       int
+	Data      string
 	Hash      string
 	PrevHash  string
 }
 
-func (block Block) hash() (string, error) {
-	record := string(block.Index) + block.Timestamp + string(block.BPM) + block.PrevHash
+func (block *Block) hash() (string, error) {
+	record := string(block.Index) + block.Timestamp + block.Data + block.PrevHash
 	h := sha256.New()
 
 	if _, err := h.Write([]byte(record)); err != nil {
@@ -34,27 +36,27 @@ func (block Block) hash() (string, error) {
 	return hex.EncodeToString(hashed), nil
 }
 
-func GenerateBlock(oldBlock Block, bpm int) (Block, error) {
+func GenerateBlock(oldBlock *Block, data string) (*Block, error) {
 	var newBlock Block
 
 	t := time.Now()
 
 	newBlock.Index = oldBlock.Index + 1
 	newBlock.Timestamp = t.String()
-	newBlock.BPM = bpm
+	newBlock.Data = data
 	newBlock.PrevHash = oldBlock.Hash
 	hash, err := newBlock.hash()
 
 	if err != nil {
-		return newBlock, err
+		return &newBlock, err
 	}
 
 	newBlock.Hash = hash
 
-	return newBlock, err
+	return &newBlock, err
 }
 
-func (block Block) IsBlockValid(oldBlock Block) bool {
+func (block *Block) IsBlockValid(oldBlock *Block) bool {
 	if oldBlock.Index+1 != block.Index {
 		return false
 	}
@@ -76,8 +78,27 @@ func (block Block) IsBlockValid(oldBlock Block) bool {
 	return true
 }
 
-func (bchain BlockChain) ReplaceChain(newBlocks []Block) {
+func (bchain *BlockChain) ReplaceChain(newBlocks []*Block) {
 	if len(newBlocks) > len(bchain.Blocks) {
 		bchain.Blocks = newBlocks
 	}
+}
+
+func (bchain *BlockChain) GenesisBlock() {
+	t := time.Now()
+
+	genesisBlock := &Block{0, t.String(), "", "", ""}
+
+	spew.Dump(genesisBlock)
+	bchain.Blocks = append(bchain.Blocks, genesisBlock)
+}
+
+func New() *BlockChain {
+	var a []*Block
+
+	chain := BlockChain{Blocks: a}
+
+	chain.GenesisBlock()
+
+	return &chain
 }
