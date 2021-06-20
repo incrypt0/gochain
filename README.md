@@ -1,1 +1,1 @@
-# A simple blockchain written in Go
+# A Very Basic Blockchain written in Go
